@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ThatSoftwareCompany/template-go-api/internal/platform/config"
-	"github.com/ThatSoftwareCompany/template-go-api/internal/platform/errstore"
+	"github.com/ThatSoftwareCompany/testing-template/internal/platform/config"
+	"github.com/ThatSoftwareCompany/testing-template/internal/platform/errstore"
 )
 
 type contextKey string

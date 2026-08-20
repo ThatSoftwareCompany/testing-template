@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThatSoftwareCompany/template-go-api/internal/platform/httpserver"
+	"github.com/ThatSoftwareCompany/testing-template/internal/platform/httpserver"
 )
 
 func TestHealthControllerReturnsDisabledDatabase(t *testing.T) {

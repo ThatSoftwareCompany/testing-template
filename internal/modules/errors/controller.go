@@ -3,7 +3,7 @@ package errors
 import (
 	"net/http"
 
-	"github.com/ThatSoftwareCompany/template-go-api/internal/platform/httpserver"
+	"github.com/ThatSoftwareCompany/testing-template/internal/platform/httpserver"
 )
 
 type Controller struct {

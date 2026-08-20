@@ -9,13 +9,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ThatSoftwareCompany/template-go-api/internal/modules/health"
-	"github.com/ThatSoftwareCompany/template-go-api/internal/platform/config"
-	"github.com/ThatSoftwareCompany/template-go-api/internal/platform/db"
-	"github.com/ThatSoftwareCompany/template-go-api/internal/platform/errstore"
-	"github.com/ThatSoftwareCompany/template-go-api/internal/platform/httpserver"
-	"github.com/ThatSoftwareCompany/template-go-api/internal/platform/logging"
-	platformmigrate "github.com/ThatSoftwareCompany/template-go-api/internal/platform/migrate"
+	"github.com/ThatSoftwareCompany/testing-template/internal/modules/health"
+	"github.com/ThatSoftwareCompany/testing-template/internal/platform/config"
+	"github.com/ThatSoftwareCompany/testing-template/internal/platform/db"
+	"github.com/ThatSoftwareCompany/testing-template/internal/platform/errstore"
+	"github.com/ThatSoftwareCompany/testing-template/internal/platform/httpserver"
+	"github.com/ThatSoftwareCompany/testing-template/internal/platform/logging"
+	platformmigrate "github.com/ThatSoftwareCompany/testing-template/internal/platform/migrate"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

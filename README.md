@@ -1,6 +1,6 @@
-# {{PROJECT_NAME}}
+# testing-template
 
-Reusable Go API foundation for That Software Company. The generated application name is `{{APP_NAME}}`.
+Reusable Go API foundation for That Software Company. The generated application name is `testing-template`.
 
 ## Requirements
 
