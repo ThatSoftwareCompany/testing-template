@@ -1,0 +1,84 @@
+name: Go API CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.0
+          cache: true
+
+      - name: Tidy modules
+        run: go mod tidy
+
+      - name: Verify module files are committed
+        run: git diff --exit-code -- go.mod go.sum
+
+      - name: Verify module checksums
+        run: go mod verify
+
+      - name: Validate template lifecycle
+        run: ./scripts/validate-template.sh
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Race test
+        run: go test -race ./...
+
+      - name: Build API
+        run: go build -o "$RUNNER_TEMP/template-api" ./cmd/api
+
+      - name: Build migration CLI
+        run: go build -o "$RUNNER_TEMP/template-migrate" ./cmd/migrate
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.0
+          cache: true
+
+      - name: Run integration tests
+        env:
+          TEST_DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db?sslmode=disable
+        run: go test -tags=integration ./...

@@ -1,0 +1,117 @@
+name: Template update
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  update:
+    if: github.repository != 'ThatSoftwareCompany/template-go-api'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      TEMPLATE_REPOSITORY: https://github.com/ThatSoftwareCompany/template-go-api.git
+
+    steps:
+      - name: Check out derived repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.0
+          cache: true
+
+      - name: Detect latest compatible template version
+        id: template
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_commit=$(jq -er '.template_commit' .template/manifest.json)
+          latest_tag=$(git ls-remote --tags --refs "$TEMPLATE_REPOSITORY" 'refs/tags/v*' \
+            | awk -F/ '{print $3}' \
+            | sort -V \
+            | tail -n 1)
+          if [[ -z "$latest_tag" ]]; then
+            echo "No version tags were found in $TEMPLATE_REPOSITORY" >&2
+            exit 1
+          fi
+
+          latest_commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/${latest_tag}^{}" | awk '{print $1}')
+          if [[ -z "$latest_commit" ]]; then
+            latest_commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/${latest_tag}" | awk '{print $1}')
+          fi
+          if [[ -z "$latest_commit" ]]; then
+            echo "Unable to resolve commit for ${latest_tag}" >&2
+            exit 1
+          fi
+
+          latest_version=${latest_tag#v}
+          echo "latest_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
+          echo "latest_version=${latest_version}" >> "$GITHUB_OUTPUT"
+          echo "latest_commit=${latest_commit}" >> "$GITHUB_OUTPUT"
+          echo "current_commit=${current_commit}" >> "$GITHUB_OUTPUT"
+
+          if [[ "$current_commit" == "$latest_commit" ]]; then
+            echo "update_required=false" >> "$GITHUB_OUTPUT"
+            echo "Derived repository is already based on ${latest_tag}."
+          else
+            echo "update_required=true" >> "$GITHUB_OUTPUT"
+            echo "Template update available: ${latest_tag} (${latest_commit})."
+          fi
+
+      - name: Apply template update
+        if: steps.template.outputs.update_required == 'true'
+        id: update
+        shell: bash
+        env:
+          CURRENT_COMMIT: ${{ steps.template.outputs.current_commit }}
+          LATEST_COMMIT: ${{ steps.template.outputs.latest_commit }}
+          LATEST_VERSION: ${{ steps.template.outputs.latest_version }}
+        run: |
+          set -euo pipefail
+
+          branch="chore/template-update-${LATEST_VERSION}"
+          git switch -c "$branch"
+          ./scripts/template-update.sh \
+            --template-repository "$TEMPLATE_REPOSITORY" \
+            --from-commit "$CURRENT_COMMIT" \
+            --to-commit "$LATEST_COMMIT"
+
+          git diff --check
+          git diff --cached --name-only -z | xargs -0 -r git add --
+          git diff --name-only -z | xargs -0 -r git add --
+          git ls-files --others --exclude-standard -z | xargs -0 -r git add --
+          git diff --cached --quiet && {
+            echo "Template update produced no changes."
+            exit 0
+          }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update template to ${LATEST_VERSION}"
+          git push --set-upstream origin "$branch"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+
+      - name: Open update pull request
+        if: steps.template.outputs.update_required == 'true' && steps.update.outputs.branch != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.update.outputs.branch }}
+          LATEST_VERSION: ${{ steps.template.outputs.latest_version }}
+          LATEST_COMMIT: ${{ steps.template.outputs.latest_commit }}
+        run: |
+          set -euo pipefail
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore: update template to ${LATEST_VERSION}" \
+            --body "Automated template update to version ${LATEST_VERSION} (${LATEST_COMMIT}). Review compatibility, migrations, and application-specific conflicts before merging."
