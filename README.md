@@ -117,7 +117,7 @@ The Bash setup script safely configures a generated project without arbitrary ov
   --generated-from "ThatSoftwareCompany/example-api"
 ```
 
-The setup script records the source commit in `template_commit` when Git metadata is available. It records `generated_from` from `--generated-from`, defaulting to the generated module path, and preserves both values on subsequent idempotent runs.
+The setup script resolves the source commit for the published `template_version` tag and records it in `template_commit`; `--template-commit` can provide an explicit override. It never uses the generated repository's own commit as template provenance. It records `generated_from` from `--generated-from`, defaulting to the generated module path, and preserves both values on subsequent idempotent runs.
 
 Validate the template manifest and required files with:
 
@@ -130,6 +130,10 @@ Validate the template manifest and required files with:
 `.template/manifest.json` records the source repository, template version, template commit, generated origin, compatibility, dependencies, and update policy. The update automation detects new template versions, opens PRs in derived repositories, enforces compatibility, and leaves breaking-change records and application-specific conflicts for manual review.
 
 The generated repository also includes a scheduled and manually dispatchable template-update workflow. It looks for `vMAJOR.MINOR.PATCH` tags, applies a three-way patch from the recorded `template_commit`, checks Go and PostgreSQL compatibility, records new provenance, and opens a pull request. It never merges automatically. The repository owner must allow GitHub Actions to create pull requests and review generated changes manually.
+
+If an older generated project recorded its own repository commit instead of the template commit, the workflow resolves provenance from the matching release tag and opens a small repair pull request automatically.
+
+Before enabling updates that may change `.github/workflows`, create an Actions repository secret named `TEMPLATE_UPDATE_TOKEN` in the generated repository. Use a dedicated fine-grained personal access token or GitHub App installation token with Contents, Workflows, and Pull requests read/write permissions scoped to that repository. The workflow uses this secret for Git operations and falls back to `GITHUB_TOKEN` only when the secret is absent. Never commit this token or place it in `.env` files.
 
 The template maintainer must publish version tags such as `v0.1.0` before derived repositories can detect releases. The initial release tag should point to the merged template commit.
 

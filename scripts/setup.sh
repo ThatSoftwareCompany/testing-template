@@ -12,6 +12,7 @@ environment="development"
 database_enabled="true"
 architecture="modular-mvc"
 generated_from=""
+template_commit_override=""
 
 usage() {
   cat <<'EOF'
@@ -26,6 +27,7 @@ Options:
   --database-enabled BOOL   true or false
   --architecture NAME       modular-mvc
   --generated-from VALUE    Derived repository identifier (defaults to module path)
+  --template-commit SHA     Template source commit override (optional)
   -h, --help                Show this help
 EOF
 }
@@ -67,6 +69,11 @@ while [[ $# -gt 0 ]]; do
       generated_from=$2
       shift 2
       ;;
+    --template-commit)
+      [[ $# -ge 2 ]] || { echo "--template-commit requires a value" >&2; exit 2; }
+      template_commit_override=$2
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -97,6 +104,10 @@ if [[ -z "$generated_from" ]]; then
 fi
 if [[ ! "$generated_from" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]]; then
   echo "generated-from contains unsupported characters" >&2
+  exit 2
+fi
+if [[ -n "$template_commit_override" && ! "$template_commit_override" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "template-commit must be a 40-character lowercase Git SHA" >&2
   exit 2
 fi
 if [[ -z "$app_name" ]]; then
@@ -211,11 +222,20 @@ replace_token "$manifest" "{{DATABASE_ENABLED}}" "$database_enabled"
 replace_token "$manifest" "{{ARCHITECTURE}}" "$architecture"
 replace_empty_manifest_field "generated_from" "$generated_from"
 
-template_commit=""
-if template_commit=$(git -C "$repo_root" rev-parse --verify HEAD 2>/dev/null); then
+template_commit="$template_commit_override"
+if [[ -z "$template_commit" ]] && command -v git >/dev/null 2>&1; then
+  template_source=$(sed -n 's/^[[:space:]]*"template_source":[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest")
+  template_version=$(sed -n 's/^[[:space:]]*"template_version":[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest")
+  template_repository="https://github.com/${template_source}.git"
+  template_commit=$(git ls-remote "$template_repository" "refs/tags/v${template_version}^{}" 2>/dev/null | awk 'NR == 1 { print $1 }')
+  if [[ -z "$template_commit" ]]; then
+    template_commit=$(git ls-remote "$template_repository" "refs/tags/v${template_version}" 2>/dev/null | awk 'NR == 1 { print $1 }')
+  fi
+fi
+if [[ -n "$template_commit" ]]; then
   replace_empty_manifest_field "template_commit" "$template_commit"
 else
-  echo "Git metadata is unavailable; template_commit remains empty"
+  echo "Template release commit could not be resolved; template_commit remains empty"
 fi
 
 replace_token "$readme" "{{PROJECT_NAME}}" "$project_name"

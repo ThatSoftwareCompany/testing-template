@@ -77,6 +77,16 @@ if [[ "$from_commit" == "$to_commit" ]]; then
   exit 2
 fi
 
+resolve_tag_commit() {
+  local version=$1
+  local commit
+  commit=$(git ls-remote "$template_repository" "refs/tags/v${version}^{}" 2>/dev/null | awk 'NR == 1 { print $1 }')
+  if [[ -z "$commit" ]]; then
+    commit=$(git ls-remote "$template_repository" "refs/tags/v${version}" 2>/dev/null | awk 'NR == 1 { print $1 }')
+  fi
+  printf '%s' "$commit"
+}
+
 for command in git jq go; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "required command is missing: ${command}" >&2
@@ -96,9 +106,14 @@ if [[ ! -f "$current_manifest" ]]; then
 fi
 
 current_commit=$(jq -er '.template_commit' "$current_manifest")
-if [[ "$current_commit" != "$from_commit" ]]; then
-  echo "from commit does not match .template/manifest.json template_commit" >&2
+current_version=$(jq -er '.template_version' "$current_manifest")
+current_release_commit=$(resolve_tag_commit "$current_version")
+if [[ "$current_commit" != "$from_commit" && "$current_release_commit" != "$from_commit" ]]; then
+  echo "from commit does not match the recorded source commit or the released template version" >&2
   exit 1
+fi
+if [[ "$current_commit" != "$from_commit" && "$current_release_commit" == "$from_commit" ]]; then
+  echo "Using source commit ${from_commit} resolved from template version ${current_version}."
 fi
 
 temporary=$(mktemp -d /tmp/tsc-template-update.XXXXXX)
