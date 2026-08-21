@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.TEMPLATE_UPDATE_TOKEN || github.token }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -36,25 +37,32 @@ jobs:
           set -euo pipefail
 
           current_commit=$(jq -er '.template_commit' .template/manifest.json)
+
           latest_tag=$(git ls-remote --tags --refs "$TEMPLATE_REPOSITORY" 'refs/tags/v*' \
             | awk -F/ '{print $3}' \
             | sort -V \
             | tail -n 1)
+
           if [[ -z "$latest_tag" ]]; then
             echo "No version tags were found in $TEMPLATE_REPOSITORY" >&2
             exit 1
           fi
 
-          latest_commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/${latest_tag}^{}" | awk '{print $1}')
+          latest_commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/${latest_tag}^{}" \
+            | awk '{print $1}')
+
           if [[ -z "$latest_commit" ]]; then
-            latest_commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/${latest_tag}" | awk '{print $1}')
+            latest_commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/${latest_tag}" \
+              | awk '{print $1}')
           fi
+
           if [[ -z "$latest_commit" ]]; then
             echo "Unable to resolve commit for ${latest_tag}" >&2
             exit 1
           fi
 
           latest_version=${latest_tag#v}
+
           echo "latest_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
           echo "latest_version=${latest_version}" >> "$GITHUB_OUTPUT"
           echo "latest_commit=${latest_commit}" >> "$GITHUB_OUTPUT"
@@ -81,6 +89,7 @@ jobs:
 
           branch="chore/template-update-${LATEST_VERSION}"
           git switch -c "$branch"
+
           ./scripts/template-update.sh \
             --template-repository "$TEMPLATE_REPOSITORY" \
             --from-commit "$CURRENT_COMMIT" \
@@ -90,6 +99,7 @@ jobs:
           git diff --cached --name-only -z | xargs -0 -r git add --
           git diff --name-only -z | xargs -0 -r git add --
           git ls-files --others --exclude-standard -z | xargs -0 -r git add --
+
           git diff --cached --quiet && {
             echo "Template update produced no changes."
             exit 0
@@ -97,19 +107,22 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git commit -m "chore: update template to ${LATEST_VERSION}"
           git push --set-upstream origin "$branch"
+
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
 
       - name: Open update pull request
         if: steps.template.outputs.update_required == 'true' && steps.update.outputs.branch != ''
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TEMPLATE_UPDATE_TOKEN || github.token }}
           BRANCH: ${{ steps.update.outputs.branch }}
           LATEST_VERSION: ${{ steps.template.outputs.latest_version }}
           LATEST_COMMIT: ${{ steps.template.outputs.latest_commit }}
         run: |
           set -euo pipefail
+
           gh pr create \
             --base main \
             --head "$BRANCH" \
