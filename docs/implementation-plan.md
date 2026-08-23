@@ -8,7 +8,7 @@ Build a runnable Go 1.26 modular monolith with PostgreSQL enabled by default and
 
 Keep OpenAPI documentation separate from code and split it by module. Add development and production Docker targets, a PostgreSQL Compose service, GitHub Actions quality checks, unit/HTTP/integration tests, a template manifest, and an idempotent setup script.
 
-The template lifecycle foundation records generated-project provenance, validates the manifest contract, verifies required template files in CI, detects version tags, checks compatibility, and prepares automatic derived-repository update PRs. Breaking-change records and application-specific conflict resolution remain manual.
+The template lifecycle foundation records generated-project provenance, validates the manifest contract, verifies required template files in CI, detects version tags, checks compatibility, preserves the application-owned `internal/app/routes.go` extension point, and prepares automatic derived-repository update PRs. Derived repositories require a one-time `TEMPLATE_UPDATE_TOKEN` secret with Contents, Workflows, and Pull requests read/write permissions before the update workflow can modify workflow files. Breaking-change records and application-specific conflict resolution remain manual.
 
 ## Future phases
 

@@ -70,11 +70,14 @@ routes -> controller -> service -> repository/client
 
 - `internal/modules/health` owns health transport and readiness rules.
 - `internal/modules/errors` prepares the future internal error use case.
+- `internal/app/routes.go` is the application-owned extension point for registering product modules.
 - `internal/platform` owns configuration, HTTP, logging, PostgreSQL, migrations, and safe error storage.
 - `repository` is reserved for persistence.
 - `client` is reserved for external APIs.
 - Public routes are versioned with `/api/v1`.
 - OpenAPI files live in `docs/openapi/` and are separate from controllers.
+
+The template owns the operational composition in `cmd/api`, including `/__ping` and `/api/v1/health`. A generated project must not add product routes to those files or to `internal/modules/health`. Add product modules under `internal/modules/<business-module>/` and register them from `internal/app/routes.go`; the template updater preserves that extension point.
 
 ## Security
 
@@ -133,7 +136,23 @@ The generated repository also includes a scheduled and manually dispatchable tem
 
 If an older generated project recorded its own repository commit instead of the template commit, the workflow resolves provenance from the matching release tag and opens a small repair pull request automatically.
 
-Before enabling updates that may change `.github/workflows`, create an Actions repository secret named `TEMPLATE_UPDATE_TOKEN` in the generated repository. Use a dedicated fine-grained personal access token or GitHub App installation token with Contents, Workflows, and Pull requests read/write permissions scoped to that repository. The workflow uses this secret for Git operations and falls back to `GITHUB_TOKEN` only when the secret is absent. Never commit this token or place it in `.env` files.
+### Required derived-repository onboarding
+
+Complete these steps immediately after generating a repository from this template and before running the template-update workflow:
+
+1. Create a dedicated fine-grained personal access token or GitHub App installation token. Scope it to the generated repository only and grant:
+   - Contents: Read and write
+   - Workflows: Read and write
+   - Pull requests: Read and write
+2. Add it to the generated repository under `Settings -> Secrets and variables -> Actions` as the repository secret `TEMPLATE_UPDATE_TOKEN`.
+3. In `Settings -> Actions -> General`, allow read and write workflow permissions and allow GitHub Actions to create pull requests when the organization policy exposes that option.
+4. Run `Template update` through `Actions -> Template update -> Run workflow` once and verify that it can create its update branch and pull request.
+
+GitHub's built-in `GITHUB_TOKEN` is retained as a fallback for updates that do not modify workflow files, but it is not sufficient for the full template lifecycle. Without `TEMPLATE_UPDATE_TOKEN`, a workflow update can fail with `refusing to allow a GitHub App to create or update workflow ... without workflows permission`. Never commit the token or place it in `.env` files. If the organization requires approval for fine-grained tokens, the token must be approved before it can write to the generated repository.
+
+Token creation reference: [GitHub fine-grained personal access tokens](https://github.com/settings/personal-access-tokens/new).
+
+If an update reports a conflict in `.github/workflows/template-update.yml`, preserve the template's latest provenance and update logic together with the `TEMPLATE_UPDATE_TOKEN` checkout and `GH_TOKEN` configuration. Run the generated repository tests before committing the manually resolved update.
 
 The template maintainer must publish version tags such as `v0.1.0` before derived repositories can detect releases. The initial release tag should point to the merged template commit.
 
