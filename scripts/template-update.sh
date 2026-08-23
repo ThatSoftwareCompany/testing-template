@@ -116,6 +116,14 @@ if [[ "$current_commit" != "$from_commit" && "$current_release_commit" == "$from
   echo "Using source commit ${from_commit} resolved from template version ${current_version}."
 fi
 
+# internal/app/routes.go is an application-owned extension point. Preserve
+# derived repository route registrations when the template is updated.
+template_pathspecs=(
+  .
+  ':(exclude).template/manifest.json'
+  ':(exclude)internal/app/routes.go'
+)
+
 temporary=$(mktemp -d /tmp/tsc-template-update.XXXXXX)
 trap 'rm -rf -- "$temporary"' EXIT
 source_dir="${temporary}/template"
@@ -149,14 +157,14 @@ if [[ -x "${source_dir}/scripts/validate-template.sh" ]]; then
   (cd "$source_dir" && GOCACHE="$source_cache" ./scripts/validate-template.sh)
 fi
 
-deleted_files=$(git -C "$source_dir" diff --diff-filter=D --name-only "$from_commit" "$to_commit" -- . ':(exclude).template/manifest.json')
+deleted_files=$(git -C "$source_dir" diff --diff-filter=D --name-only "$from_commit" "$to_commit" -- "${template_pathspecs[@]}")
 if [[ -n "$deleted_files" ]]; then
   echo "template updates that delete files require manual migration:" >&2
   printf '%s\n' "$deleted_files" >&2
   exit 1
 fi
 
-git -C "$source_dir" diff --binary --find-renames "$from_commit" "$to_commit" -- . ':(exclude).template/manifest.json' > "$patch_file"
+git -C "$source_dir" diff --binary --find-renames "$from_commit" "$to_commit" -- "${template_pathspecs[@]}" > "$patch_file"
 if [[ -s "$patch_file" ]]; then
   (cd "$repo_root" && git apply --3way --index "$patch_file")
   (cd "$repo_root" && git reset --quiet)

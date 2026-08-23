@@ -16,12 +16,30 @@ This repository is the canonical backend template for That Software Company. It 
 ## Architecture
 
 - `cmd/api` composes configuration, platform services, modules, and graceful shutdown.
+- `internal/app/routes.go` is the application-owned route composition extension point.
 - `cmd/migrate` is the explicit SQL migration CLI.
 - `internal/modules/<module>` contains module transport and business responsibilities.
 - `internal/platform` contains shared infrastructure only: configuration, PostgreSQL, HTTP, logging, error storage, and migrations.
 - The public API is versioned under `/api/v1`.
 - `/__ping` is a process liveness check and never queries PostgreSQL.
 - `/api/v1/health` is a readiness check and reports PostgreSQL state without exposing failure details.
+
+## Template-managed files and extension points
+
+Generated repositories must keep template-managed infrastructure intact so template updates can be applied with minimal conflicts. Do not modify these paths to add product functionality:
+
+- `cmd/api/main.go`
+- `cmd/migrate/main.go`
+- `internal/platform/**`
+- `internal/modules/health/**`
+- `internal/modules/errors/**`
+- `.github/workflows/**`
+- `Dockerfile`, `compose.yaml`, `.dockerignore`, and `.env.example`
+- `migrations/**`, `scripts/**`, `.template/**`, and the root CI/documentation files
+
+Add product-specific HTTP routes and module composition in `internal/app/routes.go`. Add new business modules under `internal/modules/<business-module>/` with their own controller, service, repository, client, DTO, and tests as applicable. Core liveness/readiness routes remain template-managed and must not be replaced with product routes.
+
+The exception is intentional maintenance of the canonical template itself, including infrastructure fixes, security fixes, documentation, tests, and template lifecycle changes. When resolving an update conflict, preserve both the latest template behavior and the documented application extension point.
 
 ## Security rules
 

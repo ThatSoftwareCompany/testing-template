@@ -22,6 +22,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # TEMPLATE-MANAGED: configure the secret in the derived repository;
+          # do not replace this with a hard-coded credential.
           token: ${{ secrets.TEMPLATE_UPDATE_TOKEN || github.token }}
 
       - name: Set up Go

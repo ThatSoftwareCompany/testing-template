@@ -11,6 +11,7 @@ required_files=(
   ".env.example"
   ".template/manifest.json"
   ".github/workflows/template-update.yml"
+  "internal/app/routes.go"
   "docs/openapi/openapi.yaml"
   "migrations/000001_create_error_events.up.sql"
   "migrations/000001_create_error_events.down.sql"
