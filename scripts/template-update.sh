@@ -87,6 +87,14 @@ resolve_tag_commit() {
   printf '%s' "$commit"
 }
 
+escape_sed_pattern() {
+  printf '%s' "$1" | sed 's/[.[\*^$\\]/\\&/g'
+}
+
+escape_sed_replacement() {
+  printf '%s' "$1" | sed 's/[\\&|]/\\&/g'
+}
+
 for command in git jq go; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "required command is missing: ${command}" >&2
@@ -117,12 +125,15 @@ if [[ "$current_commit" != "$from_commit" && "$current_release_commit" == "$from
 fi
 
 # internal/app/routes.go is an application-owned extension point. Preserve
-# derived repository route registrations when the template is updated.
+# derived repository route registrations when the file already exists. Older
+# generated repositories must receive the file once during their migration.
 template_pathspecs=(
   .
   ':(exclude).template/manifest.json'
-  ':(exclude)internal/app/routes.go'
 )
+if [[ -f "${repo_root}/internal/app/routes.go" ]]; then
+  template_pathspecs+=(':(exclude)internal/app/routes.go')
+fi
 
 temporary=$(mktemp -d /tmp/tsc-template-update.XXXXXX)
 trap 'rm -rf -- "$temporary"' EXIT
@@ -139,6 +150,13 @@ if ! git -C "$source_dir" merge-base --is-ancestor "$from_commit" "$to_commit"; 
   exit 1
 fi
 git -C "$source_dir" checkout --quiet --detach "$to_commit"
+
+target_module_path=$(awk '$1 == "module" { print $2; exit }' "${repo_root}/go.mod")
+source_module_path=$(git -C "$source_dir" show "${to_commit}:go.mod" | awk '$1 == "module" { print $2; exit }')
+if [[ -z "$target_module_path" || -z "$source_module_path" ]]; then
+  echo "unable to resolve Go module paths for template update" >&2
+  exit 1
+fi
 
 git -C "$source_dir" show "${to_commit}:.template/manifest.json" > "$target_manifest"
 template_version=$(jq -er '.template_version' "$target_manifest")
@@ -166,6 +184,14 @@ fi
 
 git -C "$source_dir" diff --binary --find-renames "$from_commit" "$to_commit" -- "${template_pathspecs[@]}" > "$patch_file"
 if [[ -s "$patch_file" ]]; then
+  if [[ "$source_module_path" != "$target_module_path" ]]; then
+    normalized_patch_file="${temporary}/template-normalized.patch"
+    source_module_pattern=$(escape_sed_pattern "$source_module_path")
+    target_module_replacement=$(escape_sed_replacement "$target_module_path")
+    sed "s|${source_module_pattern}|${target_module_replacement}|g" "$patch_file" > "$normalized_patch_file"
+    patch_file="$normalized_patch_file"
+    echo "Normalized template module path to ${target_module_path}."
+  fi
   (cd "$repo_root" && git apply --3way --index "$patch_file")
   (cd "$repo_root" && git reset --quiet)
 fi
