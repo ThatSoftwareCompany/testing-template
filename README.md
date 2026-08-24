@@ -4,7 +4,7 @@ Reusable Go API foundation for That Software Company. The generated application 
 
 ## Requirements
 
-- Go 1.26.0 or newer.
+- Go 1.26.0 or newer. CI and Docker currently validate Go 1.26.7.
 - PostgreSQL 16 or newer for database-backed execution.
 - Docker and Docker Compose for the container workflow.
 
@@ -95,8 +95,14 @@ go mod verify
 test -z "$(gofmt -l .)"
 go vet ./...
 go test ./...
+go test -race ./...
 go build ./cmd/api
 go build ./cmd/migrate
+go build ./cmd/template
+
+# Template lifecycle and shell checks
+bash -n scripts/*.sh
+./scripts/test-template-lifecycle.sh
 ```
 
 Integration tests require PostgreSQL and use the `integration` build tag:
@@ -104,6 +110,8 @@ Integration tests require PostgreSQL and use the `integration` build tag:
 ```bash
 TEST_DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/DB?sslmode=disable' go test -tags=integration ./...
 ```
+
+The CI workflow runs the integration suite against PostgreSQL 16 and also performs Docker build and smoke checks. The hardening release measures critical behavior and scenarios rather than requiring an arbitrary 100% line coverage threshold.
 
 ## Setup script
 
@@ -132,7 +140,7 @@ Validate the template manifest and required files with:
 
 `.template/manifest.json` records the source repository, template version, template commit, generated origin, compatibility, dependencies, and update policy. The update automation detects new template versions, opens PRs in derived repositories, enforces compatibility, and leaves breaking-change records and application-specific conflicts for manual review.
 
-The generated repository also includes a scheduled and manually dispatchable template-update workflow. It looks for `vMAJOR.MINOR.PATCH` tags, applies a three-way patch from the recorded `template_commit`, checks Go and PostgreSQL compatibility, records new provenance, and opens a pull request. It never merges automatically. The repository owner must allow GitHub Actions to create pull requests and review generated changes manually.
+The generated repository also includes a scheduled and manually dispatchable template-update workflow. It looks for `vMAJOR.MINOR.PATCH` tags, applies a three-way patch from the recorded `template_commit`, normalizes the canonical Go module path to the generated repository's module path, checks Go and PostgreSQL compatibility, records new provenance, and opens a pull request. It never merges automatically. The repository owner must allow GitHub Actions to create pull requests and review generated changes manually.
 
 If an older generated project recorded its own repository commit instead of the template commit, the workflow resolves provenance from the matching release tag and opens a small repair pull request automatically.
 
@@ -158,10 +166,14 @@ The template maintainer must publish version tags such as `v0.1.0` before derive
 
 ## Planned phases
 
-- Authentication with Argon2id, Ed25519/EdDSA JWTs, approximately 15-minute access tokens, 30-day rotating/revocable refresh tokens, HttpOnly cookies, environment-specific Secure and SameSite policies, CSRF protection, authentication/authorization middleware, and securely managed Ed25519 keys.
-- Authenticated access to `/api/v1/internal/errors?endpoint=<path>`.
-- Google OAuth integration.
-- Dependabot or Renovate, `govulncheck`, Docker image scanning, and stricter `go.sum` freshness checks.
+The current hardening release is `0.2.5`. It covers the foundation, lifecycle updater, setup script, PostgreSQL integration, Docker smoke tests, and CI matrix. The next planned releases are:
+
+- `0.3.0`: administrated login, Argon2id, Ed25519/EdDSA JWTs, approximately 15-minute access tokens, 30-day rotating/revocable refresh tokens, HttpOnly cookies, environment-specific Secure and SameSite policies, CSRF protection, authentication/authorization middleware, and authorized access to `/api/v1/internal/errors?endpoint=<path>`.
+- `0.4.0`: Dependabot, dependency review, `govulncheck`, Docker image scanning, strict `go.sum` checks, full-SHA Actions pinning, release notes, and safer updater conflict reporting.
+- `0.5.0`: provider-agnostic same-origin deployment contract and trusted reverse-proxy configuration.
+- `1.0.0`: final validation from a clean `testing-templatev2` repository.
+
+Google OAuth, public registration, password recovery, and frontend implementation are not part of the current backend foundation.
 
 After review and merge, the backend and frontend repositories must be marked as GitHub Template Repositories from `Settings -> General -> Template repository`. This is a post-merge checklist item, not an automated repository mutation.
 

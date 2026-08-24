@@ -59,6 +59,25 @@ func TestPingResponseDoesNotNeedDatabase(t *testing.T) {
 	}
 }
 
+func TestNotFoundResponseIncludesStableErrorContract(t *testing.T) {
+	server := NewServer(testConfig(), slog.New(slog.NewJSONHandler(testWriter{t}, nil)), errstore.NewNoopStore())
+	request := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	request.Header.Set("X-Correlation-ID", "not-found-correlation")
+	recorder := httptest.NewRecorder()
+	server.HTTP.Handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", recorder.Code)
+	}
+	if recorder.Header().Get("Content-Type") != "application/json; charset=utf-8" {
+		t.Fatalf("unexpected content type: %q", recorder.Header().Get("Content-Type"))
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"code":"not_found"`) || !strings.Contains(body, `"correlation_id":"not-found-correlation"`) {
+		t.Fatalf("unexpected not-found response: %s", body)
+	}
+}
+
 func TestCorrelationIDIsValidatedAndReturned(t *testing.T) {
 	server := NewServer(testConfig(), slog.New(slog.NewJSONHandler(testWriter{t}, nil)), errstore.NewNoopStore())
 	server.Mux.Handle("/test", OnlyMethods(http.MethodGet)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -97,6 +116,7 @@ func TestSecurityHeadersAndCors(t *testing.T) {
 		"X-Content-Type-Options":           "nosniff",
 		"X-Frame-Options":                  "DENY",
 		"Referrer-Policy":                  "no-referrer",
+		"Permissions-Policy":               "camera=(), microphone=(), geolocation=(), payment=()",
 		"Access-Control-Allow-Origin":      "http://frontend.test",
 		"Access-Control-Allow-Credentials": "true",
 	} {
@@ -106,6 +126,37 @@ func TestSecurityHeadersAndCors(t *testing.T) {
 	}
 	if strings.Contains(recorder.Header().Get("Access-Control-Allow-Origin"), "*") {
 		t.Fatal("CORS wildcard must not be emitted")
+	}
+}
+
+func TestCorsRejectsUnlistedOrigin(t *testing.T) {
+	server := NewServer(testConfig(), slog.New(slog.NewJSONHandler(testWriter{t}, nil)), errstore.NewNoopStore())
+	server.Mux.Handle("/test-unlisted", OnlyMethods(http.MethodGet)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})))
+
+	request := httptest.NewRequest(http.MethodGet, "/test-unlisted", nil)
+	request.Header.Set("Origin", "https://not-allowed.example")
+	recorder := httptest.NewRecorder()
+	server.HTTP.Handler.ServeHTTP(recorder, request)
+
+	if recorder.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("CORS must not allow an unlisted origin")
+	}
+}
+
+func TestCorsPreflightReturnsNoContentForAllowedOrigin(t *testing.T) {
+	server := NewServer(testConfig(), slog.New(slog.NewJSONHandler(testWriter{t}, nil)), errstore.NewNoopStore())
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/health", nil)
+	request.Header.Set("Origin", "http://frontend.test")
+	recorder := httptest.NewRecorder()
+	server.HTTP.Handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", recorder.Code)
+	}
+	if recorder.Header().Get("Access-Control-Allow-Origin") != "http://frontend.test" {
+		t.Fatalf("unexpected allowed origin: %q", recorder.Header().Get("Access-Control-Allow-Origin"))
 	}
 }
 

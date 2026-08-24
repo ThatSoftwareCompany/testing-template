@@ -24,6 +24,22 @@ func TestPostgresStorePersistsAndListsSafeEvents(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
+	if err := platformmigrate.Up(platformmigrate.Config{
+		DatabaseURL:   databaseURL,
+		MigrationsDir: "file://../../../migrations",
+	}); err != nil {
+		t.Fatalf("reapply migrations: %v", err)
+	}
+	version, dirty, err := platformmigrate.Version(platformmigrate.Config{
+		DatabaseURL:   databaseURL,
+		MigrationsDir: "file://../../../migrations",
+	})
+	if err != nil {
+		t.Fatalf("read migration version: %v", err)
+	}
+	if version != 1 || dirty {
+		t.Fatalf("unexpected migration state: version=%d dirty=%t", version, dirty)
+	}
 
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
@@ -52,5 +68,20 @@ func TestPostgresStorePersistsAndListsSafeEvents(t *testing.T) {
 	}
 	if len(items) == 0 || items[0].CorrelationID != event.CorrelationID {
 		t.Fatalf("unexpected events: %#v", items)
+	}
+
+	filtered, err := store.List(context.Background(), Filter{Endpoint: "/not-found", Limit: 1})
+	if err != nil {
+		t.Fatalf("list filtered events: %v", err)
+	}
+	if len(filtered) != 0 {
+		t.Fatalf("unexpected filtered events: %#v", filtered)
+	}
+
+	if err := platformmigrate.Down(platformmigrate.Config{
+		DatabaseURL:   databaseURL,
+		MigrationsDir: "file://../../../migrations",
+	}, 1); err != nil {
+		t.Fatalf("rollback migration: %v", err)
 	}
 }

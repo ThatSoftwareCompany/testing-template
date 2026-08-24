@@ -1,12 +1,17 @@
 package logging
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"strings"
 )
 
 func New(level, environment string) *slog.Logger {
+	return newLogger(level, environment, os.Stdout)
+}
+
+func newLogger(level, environment string, writer io.Writer) *slog.Logger {
 	configuredLevel := slog.LevelInfo
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug":
@@ -17,7 +22,7 @@ func New(level, environment string) *slog.Logger {
 		configuredLevel = slog.LevelError
 	}
 
-	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	return slog.New(slog.NewJSONHandler(writer, &slog.HandlerOptions{
 		Level: configuredLevel,
 	})).With("environment", environment)
 }

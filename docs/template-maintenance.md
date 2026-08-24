@@ -21,10 +21,11 @@ The derived-repository workflow performs these steps:
 1. Detect the newest `vMAJOR.MINOR.PATCH` tag from `ThatSoftwareCompany/template-go-api`.
 2. Compare the generated repository's recorded `template_commit` and compatibility fields.
 3. Apply a three-way patch from the recorded commit to the tagged commit.
-4. Refuse incompatible Go/PostgreSQL changes and template file deletions.
-5. Record the new `template_version` and `template_commit`.
-6. Create an update pull request in the derived repository.
-7. Leave application-specific conflicts for manual resolution; it must never merge generated pull requests automatically.
+4. Normalize the canonical Go module path to the generated repository's module path before applying source changes.
+5. Refuse incompatible Go/PostgreSQL changes and template file deletions.
+6. Record the new `template_version` and `template_commit`.
+7. Create an update pull request in the derived repository.
+8. Leave application-specific conflicts for manual resolution; it must never merge generated pull requests automatically.
 
 If a generated repository contains its own Git commit in `template_commit`, the workflow resolves the source commit from the matching release tag and opens a provenance-repair pull request.
 
@@ -34,7 +35,7 @@ The workflow requires GitHub Actions to be allowed to create pull requests in th
 
 Template-managed files contain reusable runtime, security, CI, Docker, migration, and lifecycle behavior. Generated repositories should not modify them to add product functionality. This includes `cmd/api`, `internal/platform`, `internal/modules/health`, `internal/modules/errors`, `.github/workflows`, `scripts`, `.template`, and the root Docker, migration, and CI files.
 
-Product-specific code belongs in new business modules under `internal/modules/<business-module>/`. Register those modules in `internal/app/routes.go`, which is an application-owned extension point intentionally preserved by `scripts/template-update.sh`. The template-provided `/__ping` and `/api/v1/health` routes are operational routes and remain active automatically; they do not need to be copied or re-registered by the generated project.
+Product-specific code belongs in new business modules under `internal/modules/<business-module>/`. Register those modules in `internal/app/routes.go`, which is an application-owned extension point intentionally preserved by `scripts/template-update.sh` once it exists. Repositories generated before this extension point was introduced receive the file during their first compatible update; subsequent updates preserve its contents. The template-provided `/__ping` and `/api/v1/health` routes are operational routes and remain active automatically; they do not need to be copied or re-registered by the generated project.
 
 The exception is maintenance of the canonical template itself. Template maintainers may change managed files when implementing a deliberate template, security, test, documentation, or lifecycle change, with the corresponding version, validation, and review updates.
 
