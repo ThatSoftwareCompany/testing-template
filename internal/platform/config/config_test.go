@@ -81,6 +81,26 @@ func TestLoadRejectsWildcardCors(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsInvalidConnectionBounds(t *testing.T) {
+	setBaseEnvironment(t)
+	t.Setenv("DATABASE_MIN_CONNS", "11")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid connection bounds to fail")
+	}
+}
+
+func TestLoadRejectsMigrationsWithoutDatabase(t *testing.T) {
+	setBaseEnvironment(t)
+	t.Setenv("DATABASE_ENABLED", "false")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("MIGRATIONS_RUN_ON_STARTUP", "true")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected migrations without database to fail")
+	}
+}
+
 func setBaseEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("APP_NAME", "test-api")

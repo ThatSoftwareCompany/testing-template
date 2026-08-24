@@ -1,4 +1,4 @@
-FROM golang:1.26.0-alpine AS build
+FROM golang:1.26.7-alpine AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -7,7 +7,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api \
     && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate
 
-FROM golang:1.26.0-alpine AS development
+FROM golang:1.26.7-alpine AS development
 
 WORKDIR /app
 COPY --from=build /go/pkg/mod /go/pkg/mod
