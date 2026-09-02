@@ -87,7 +87,7 @@ resolve_tag_commit() {
   printf '%s' "$commit"
 }
 
-for command in git jq go; do
+for command in cmp git jq go; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "required command is missing: ${command}" >&2
     exit 1
@@ -174,10 +174,25 @@ if [[ -n "$deleted_files" ]]; then
   exit 1
 fi
 
-git -C "$source_dir" diff --binary --find-renames "$from_commit" "$to_commit" -- "${template_pathspecs[@]}" > "$patch_file"
+already_applied_paths=()
+while IFS= read -r -d '' path; do
+	current_file="${repo_root}/${path}"
+	source_file="${source_dir}/${path}"
+	if [[ -f "$current_file" && -f "$source_file" ]] && cmp -s "$current_file" "$source_file"; then
+		already_applied_paths+=("$path")
+		echo "Skipped already-applied template file: ${path}."
+	fi
+done < <(git -C "$source_dir" diff --name-only -z "$from_commit" "$to_commit" -- "${template_pathspecs[@]}")
+
+patch_pathspecs=("${template_pathspecs[@]}")
+for path in "${already_applied_paths[@]}"; do
+	patch_pathspecs+=(":(exclude)${path}")
+done
+
+git -C "$source_dir" diff --binary --find-renames "$from_commit" "$to_commit" -- "${patch_pathspecs[@]}" > "$patch_file"
 if [[ -s "$patch_file" ]]; then
-  if [[ "$source_module_path" != "$target_module_path" ]]; then
-    normalized_patch_file="${temporary}/template-normalized.patch"
+	if [[ "$source_module_path" != "$target_module_path" ]]; then
+		normalized_patch_file="${temporary}/template-normalized.patch"
     awk -v source_module="$source_module_path" -v target_module="$target_module_path" '
       function replace_literal(value, source, target, position) {
         while ((position = index(value, source)) > 0) {
@@ -194,6 +209,10 @@ if [[ -s "$patch_file" ]]; then
       {
         if (current_path == "go.mod" || current_path ~ /\.go$/) {
           $0 = replace_literal($0, source_module, target_module)
+        } else if ($0 ~ /^ / || ($0 ~ /^-/ && $0 !~ /^--- /)) {
+          line_prefix = substr($0, 1, 1)
+          line_body = substr($0, 2)
+          $0 = line_prefix replace_literal(line_body, source_module, target_module)
         }
         print
       }
