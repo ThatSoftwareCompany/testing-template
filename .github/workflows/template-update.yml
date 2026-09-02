@@ -40,12 +40,28 @@ jobs:
 
           current_version=$(jq -er '.template_version' .template/manifest.json)
           recorded_commit=$(jq -er '.template_commit' .template/manifest.json)
-          current_commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/v${current_version}^{}" | awk '{print $1}')
-          if [[ -z "$current_commit" ]]; then
-            current_commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/v${current_version}" | awk '{print $1}')
+          resolve_tag_commit() {
+            local version=$1
+            local commit
+            commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/v${version}^{}" | awk 'NR == 1 { print $1 }')
+            if [[ -z "$commit" ]]; then
+              commit=$(git ls-remote "$TEMPLATE_REPOSITORY" "refs/tags/v${version}" | awk 'NR == 1 { print $1 }')
+            fi
+            printf '%s' "$commit"
+          }
+
+          source_probe=$(mktemp -d)
+          trap 'rm -rf -- "$source_probe"' EXIT
+          git init --bare --quiet "$source_probe"
+          current_commit=""
+          if [[ "$recorded_commit" =~ ^[0-9a-f]{40}$ ]] \
+            && git -C "$source_probe" fetch --quiet --no-tags "$TEMPLATE_REPOSITORY" "$recorded_commit" \
+            && git -C "$source_probe" cat-file -e "${recorded_commit}^{commit}"; then
+            current_commit="$recorded_commit"
+            echo "Using recorded template commit ${current_commit}."
           fi
           if [[ -z "$current_commit" ]]; then
-            current_commit="$recorded_commit"
+            current_commit=$(resolve_tag_commit "$current_version")
           fi
           if [[ -z "$current_commit" ]]; then
             echo "Unable to resolve the source commit for template version ${current_version}" >&2
