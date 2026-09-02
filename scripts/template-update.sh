@@ -87,14 +87,6 @@ resolve_tag_commit() {
   printf '%s' "$commit"
 }
 
-escape_sed_pattern() {
-  printf '%s' "$1" | sed 's/[.[\*^$\\]/\\&/g'
-}
-
-escape_sed_replacement() {
-  printf '%s' "$1" | sed 's/[\\&|]/\\&/g'
-}
-
 for command in git jq go; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "required command is missing: ${command}" >&2
@@ -186,11 +178,28 @@ git -C "$source_dir" diff --binary --find-renames "$from_commit" "$to_commit" --
 if [[ -s "$patch_file" ]]; then
   if [[ "$source_module_path" != "$target_module_path" ]]; then
     normalized_patch_file="${temporary}/template-normalized.patch"
-    source_module_pattern=$(escape_sed_pattern "$source_module_path")
-    target_module_replacement=$(escape_sed_replacement "$target_module_path")
-    sed "s|${source_module_pattern}|${target_module_replacement}|g" "$patch_file" > "$normalized_patch_file"
+    awk -v source_module="$source_module_path" -v target_module="$target_module_path" '
+      function replace_literal(value, source, target, position) {
+        while ((position = index(value, source)) > 0) {
+          value = substr(value, 1, position - 1) target substr(value, position + length(source))
+        }
+        return value
+      }
+
+      /^diff --git / {
+        current_path = $0
+        sub(/^diff --git a\/[^ ]+ b\//, "", current_path)
+      }
+
+      {
+        if (current_path == "go.mod" || current_path ~ /\.go$/) {
+          $0 = replace_literal($0, source_module, target_module)
+        }
+        print
+      }
+    ' "$patch_file" > "$normalized_patch_file"
     patch_file="$normalized_patch_file"
-    echo "Normalized template module path to ${target_module_path}."
+    echo "Normalized template module paths in Go sources and go.mod to ${target_module_path}."
   fi
   (cd "$repo_root" && git apply --3way --index "$patch_file")
   (cd "$repo_root" && git reset --quiet)

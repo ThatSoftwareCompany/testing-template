@@ -30,7 +30,13 @@ if [[ -e "${repo_root}/.env" ]]; then
   exit 1
 fi
 
-bash -n "${repo_root}/scripts/setup.sh" "${repo_root}/scripts/template-update.sh"
+template_version=$(sed -n 's/^[[:space:]]*"template_version":[[:space:]]*"\([^"]*\)".*/\1/p' "${repo_root}/.template/manifest.json")
+if [[ -z "$template_version" || ! -f "${repo_root}/docs/releases/v${template_version}.md" ]]; then
+  echo "release notes are missing for template version ${template_version:-unknown}" >&2
+  exit 1
+fi
+
+bash -n "${repo_root}"/scripts/*.sh
 
 go_cache=${GOCACHE:-}
 if [[ -z "$go_cache" || ! -d "$go_cache" || ! -w "$go_cache" ]]; then
