@@ -1,23 +1,86 @@
 # Go API Template Implementation Plan
 
-## Foundation
+This plan is the release roadmap for the backend template only. The frontend template is a separate repository and is not changed by this work.
 
-Build a runnable Go 1.26 modular monolith with PostgreSQL enabled by default and an explicit `DATABASE_ENABLED=false` mode for local and test execution. The foundation includes validated environment configuration, structured logging, correlation IDs, security middleware, liveness/readiness endpoints, graceful shutdown, PostgreSQL pooling, SQL migrations, and safe HTTP error persistence.
+## Baseline and release policy
 
-## Documentation and operations
+The template is a Go 1.26 modular monolith with PostgreSQL enabled by default. `DATABASE_ENABLED=false` remains an explicit supported mode for local development, tests, and liveness-only deployments. The minimum compatible Go version remains `1.26.0`; CI and Docker use the latest validated patch in the 1.26 line, initially `1.26.7`.
 
-Keep OpenAPI documentation separate from code and split it by module. Add development and production Docker targets, a PostgreSQL Compose service, GitHub Actions quality checks, unit/HTTP/integration tests, a template manifest, and an idempotent setup script.
+Every release must have a version tag, a release note under `docs/releases/`, and a validated `.template/manifest.json`. Release notes declare `breaking: true|false`, summarize additions and fixes, identify incompatible changes, and document migration instructions. Template updates are applied through reviewed pull requests and never merged automatically.
 
-The template lifecycle foundation records generated-project provenance, validates the manifest contract, verifies required template files in CI, detects version tags, checks compatibility, preserves the application-owned `internal/app/routes.go` extension point, and prepares automatic derived-repository update PRs. Derived repositories require a one-time `TEMPLATE_UPDATE_TOKEN` secret with Contents, Workflows, and Pull requests read/write permissions before the update workflow can modify workflow files. Breaking-change records and application-specific conflict resolution remain manual.
+## Completed releases
 
-## Future phases
+- `0.2.3`: onboarding, ownership rules, `internal/app/routes.go`, AI guidance, and derived-repository update documentation.
+- `0.2.4`: update lifecycle and module-path/provenance hotfixes.
+- `0.2.5`: foundation hardening, PostgreSQL integration, Docker smoke tests, setup idempotency, and lifecycle coverage.
+- `0.2.6`: lifecycle module-normalization hotfix and legacy bridge coverage.
 
-- Authentication: Argon2id passwords, Ed25519/EdDSA JWTs, approximately 15-minute access tokens, 30-day rotating/revocable refresh tokens, HttpOnly cookies, environment-specific Secure and SameSite policy, CSRF protection, authentication/authorization middleware, and securely managed Ed25519 keys.
-- Internal error access: expose `GET /api/v1/internal/errors?endpoint=<path>` only after authentication and internal permissions exist.
-- Template updates: maintain version tags, review generated PRs, record incompatible changes, and resolve application-specific conflicts manually.
-- Dependency and image security: add Dependabot or Renovate, `govulncheck`, Docker image scanning, and strict `go.sum` freshness checks.
-- Repository administration: after review and merge, mark both backend and frontend repositories as GitHub Template Repositories.
+## `0.2.5` — foundation hardening
 
-## Explicit non-goals
+This is the current implementation scope. It closes the foundation quality gap without introducing authentication or other feature-level breaking changes.
 
-Google OAuth, frontend implementation, authentication, and authorization are outside this delivery. The repository license is Apache-2.0.
+- Expand unit and HTTP coverage for configuration, middleware, error responses, CORS, security headers, logging behavior, and panic recovery.
+- Run PostgreSQL integration tests for pool initialization, migrations, safe error persistence, filters, limits, idempotency, and unavailable-database failures.
+- Test `scripts/setup.sh` for idempotency, custom module paths, enabled/disabled database configuration, overwrite protection, and absence of real `.env` files.
+- Test template updates with temporary repositories, including `v0.2.2 -> v0.2.3`, `v0.2.3 -> v0.2.4`, custom module paths, preservation of `internal/app/routes.go`, old-repository bootstrap, and rejection of incompatible or deleting updates.
+- Add Docker build and smoke coverage for development and production images, non-root execution, PostgreSQL readiness, `/__ping`, `/api/v1/health`, and no-database execution.
+- Make CI enforce `go mod tidy` without a diff, `go mod verify`, formatting, vet, normal tests, race tests, builds, shell validation, manifest validation, and PostgreSQL integration.
+- Keep the coverage goal behavioral: critical branches and operational scenarios must be exercised; an arbitrary 100% line threshold is not required.
+
+Acceptance criteria: the complete foundation/lifecycle matrix passes locally and in CI, the updater preserves application-owned routes, Docker smoke tests pass, and the generated repository can run both with and without PostgreSQL.
+
+## `0.3.0` — authentication and authorization
+
+Add the documented auth contract:
+
+- `GET /api/v1/auth/csrf`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/internal/errors?endpoint=<path>`
+
+There is no public registration, password recovery, or Google OAuth in this release. Login is administrated initially.
+
+- Access JWT: Ed25519/EdDSA, approximately 15 minutes, with strict algorithm, issuer, audience, subject, expiration, not-before, and key-ID validation.
+- Refresh token: opaque cryptographically random value, stored only as a hash in PostgreSQL, with family tracking, rotation, revocation, and reuse detection; initial lifetime approximately 30 days.
+- Both tokens use HttpOnly cookies. `Secure=false` and `SameSite=Lax` apply in development/test; `Secure=true` and `SameSite=Strict` apply in production. Cookies have no `Domain` attribute.
+- Signed double-submit CSRF protection uses `X-CSRF-Token`; mutable authenticated operations require it.
+- Add `users`, `refresh_tokens`, and `login_attempts` migrations. Passwords are 15–128 characters, without artificial composition rules, and use Argon2id with benchmarked initial parameters of 64 MiB, 3 iterations, and parallelism 1.
+- Login rate limiting is distributed through PostgreSQL and login failures use generic responses to prevent account enumeration.
+- PEM-mounted Ed25519 keys use `AUTH_PRIVATE_KEY_FILE`, `AUTH_PUBLIC_KEY_FILE`, `AUTH_KEY_ID`, `AUTH_JWT_ISSUER`, and `AUTH_JWT_AUDIENCE`.
+- Authorization is deny-by-default. The internal error endpoint requires the explicit `errors:read` permission.
+
+## `0.4.0` — supply-chain security and lifecycle
+
+- Add weekly grouped Dependabot updates for Go modules and GitHub Actions, plus dependency review on pull requests.
+- Add `govulncheck ./...`, strict `go.sum` verification, minimal workflow permissions, and full-SHA pinning for Actions.
+- Scan production images with Docker Scout, initially blocking fixable high and critical findings.
+- Add versioned release notes and make the updater include them in update PRs, mark breaking changes, support dry-run mode, report conflicts explicitly, and distinguish template-managed from application-owned paths.
+- Never auto-resolve semantic conflicts. Evaluate artifact attestations for binary and image releases.
+
+## `0.5.0` — provider-agnostic same-origin deployment contract
+
+Document and validate the deployment contract without changing the frontend template:
+
+- frontend at `/`, API at `/api/v1`, and liveness at `/__ping`;
+- TLS terminated by a reverse proxy;
+- Secure cookies and normally unnecessary cross-origin CORS in production;
+- migrations run as an explicit job;
+- graceful shutdown and readiness checks;
+- trusted `X-Forwarded-*` handling from configured proxies;
+- GitHub Actions deployments use OIDC instead of long-lived cloud credentials.
+
+## `1.0.0` — final validation
+
+Create `testing-templatev2` from the GitHub Template Repository and run the full matrix: new setup, PostgreSQL mode, no-database mode, a business route registered only through `internal/app/routes.go`, tests, Docker, migrations, CI, automatic updates, route preservation, authentication, authorized internal errors, and secret/file absence checks. Publish `1.0.0` only after that repository passes from a clean start.
+
+## Template maintenance and repository checklist
+
+Derived repositories need `TEMPLATE_UPDATE_TOKEN` with repository-scoped Contents, Workflows, and Pull requests read/write permissions, and GitHub Actions must be allowed to create pull requests. Application code belongs in modules under `internal/modules/` and is registered in `internal/app/routes.go`; template-managed operational files should remain unchanged unless intentionally modifying the template itself.
+
+The future update mechanism must include version detection, automatic PR creation in derived repositories, compatibility checks, a breaking-change log, and manual resolution of minimal application conflicts. After review and merge, mark both backend and frontend repositories as GitHub Template Repositories under `Settings -> General -> Template repository`.
+
+## Explicit non-goals for this foundation release
+
+Google OAuth, public registration, password recovery, frontend implementation, cloud-provider-specific deployment, and the public internal error endpoint remain outside `0.2.5`. The repository license is Apache-2.0.

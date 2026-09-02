@@ -29,6 +29,8 @@ The derived-repository workflow performs these steps:
 
 If a generated repository contains its own Git commit in `template_commit`, the workflow resolves the source commit from the matching release tag and opens a provenance-repair pull request.
 
+Repositories generated from versions before `v0.2.4` require a sequential bridge update before consuming `v0.2.5` or newer. The pre-`v0.2.4` updater could not normalize Go module paths in newly added files. If a direct update reports `no required module provides package github.com/ThatSoftwareCompany/testing-template/internal/...`, close that update PR, apply `v0.2.4` manually with the current updater, merge it, and then run the automatic update again. The lifecycle suite exercises this bridge as `v0.2.3 -> v0.2.4 -> v0.2.5`.
+
 The workflow requires GitHub Actions to be allowed to create pull requests in the derived repository. It is skipped when running in the canonical template repository itself.
 
 ## File ownership and extension points
